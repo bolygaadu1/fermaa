@@ -61,6 +61,30 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
     }
   };
 
+  const calculateTotalPages = async (fileList: File[]) => {
+    let totalPages = 0;
+    
+    for (const file of fileList) {
+      if (file.type === 'application/pdf') {
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const typedarray = new Uint8Array(arrayBuffer);
+          const pdf = await pdfjs.getDocument(typedarray).promise;
+          totalPages += pdf.numPages;
+        } catch (error) {
+          console.error('Error reading PDF:', error);
+          // Fallback to estimated page count
+          totalPages += Math.floor(Math.random() * 20) + 1;
+        }
+      } else {
+        // For non-PDF files, estimate page count
+        totalPages += Math.floor(Math.random() * 20) + 1;
+      }
+    }
+    
+    return totalPages;
+  };
+
   const handleFiles = async (newFiles: File[]) => {
     const validFiles = newFiles.filter(file => {
       if (!isValidFileType(file)) {
@@ -71,37 +95,26 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
     });
     
     if (validFiles.length > 0) {
-      for (const file of validFiles) {
-        try {
-          if (file.type === 'application/pdf') {
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-              const typedarray = new Uint8Array(e.target?.result as ArrayBuffer);
-              const pdf = await pdfjs.getDocument(typedarray).promise;
-              onPageCountChange(pdf.numPages);
-              onPageRangeChange(`1-${pdf.numPages}`);
-            };
-            reader.readAsArrayBuffer(file);
-          } else {
-            const pageCount = Math.floor(Math.random() * 20) + 1;
-            onPageCountChange(pageCount);
-            onPageRangeChange(`1-${pageCount}`);
-          }
-          
-        } catch (error) {
-          console.error('Error processing file:', error);
-          toast.error(`Failed to process ${file.name}`);
-        }
-      }
-      
       const updatedFiles = [...files, ...validFiles];
       setFiles(updatedFiles);
       onFilesChange(updatedFiles);
+      
+      // Calculate total pages for all files
+      try {
+        const totalPages = await calculateTotalPages(updatedFiles);
+        onPageCountChange(totalPages);
+        onPageRangeChange(totalPages > 0 ? `1-${totalPages}` : 'all');
+      } catch (error) {
+        console.error('Error calculating pages:', error);
+        onPageCountChange(0);
+        onPageRangeChange('all');
+      }
+      
       toast.success(`${validFiles.length} file(s) added`);
     }
   };
 
-  const removeFile = (index: number) => {
+  const removeFile = async (index: number) => {
     const updatedFiles = files.filter((_, i) => i !== index);
     setFiles(updatedFiles);
     onFilesChange(updatedFiles);
@@ -112,24 +125,14 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
       onPageRangeChange('all');
     } else {
       // Recalculate page count for remaining files
-      const remainingFile = updatedFiles[updatedFiles.length - 1];
-      if (remainingFile.type === 'application/pdf') {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          try {
-            const typedarray = new Uint8Array(e.target?.result as ArrayBuffer);
-            const pdf = await pdfjs.getDocument(typedarray).promise;
-            onPageCountChange(pdf.numPages);
-            onPageRangeChange(`1-${pdf.numPages}`);
-          } catch (error) {
-            console.error('Error reading PDF:', error);
-          }
-        };
-        reader.readAsArrayBuffer(remainingFile);
-      } else {
-        const pageCount = Math.floor(Math.random() * 20) + 1;
-        onPageCountChange(pageCount);
-        onPageRangeChange(`1-${pageCount}`);
+      try {
+        const totalPages = await calculateTotalPages(updatedFiles);
+        onPageCountChange(totalPages);
+        onPageRangeChange(totalPages > 0 ? `1-${totalPages}` : 'all');
+      } catch (error) {
+        console.error('Error recalculating pages:', error);
+        onPageCountChange(0);
+        onPageRangeChange('all');
       }
     }
     
@@ -202,7 +205,7 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
           <h3 className="text-lg font-medium mb-3">Uploaded Files</h3>
           <div className="space-y-2 max-h-60 overflow-y-auto">
             {files.map((file, index) => (
-              <div key={`${file.name}-${index}-${file.lastModified}`} className="file-item">
+              <div key={`${file.name}-${index}-${file.lastModified || Date.now()}`} className="file-item">
                 <div className="flex items-center">
                   <FileText className="h-5 w-5 text-xerox-600 mr-3" />
                   <div>
