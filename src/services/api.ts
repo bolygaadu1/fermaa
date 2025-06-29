@@ -1,6 +1,6 @@
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
   ? '' // Use relative URLs in production
-  : 'http://localhost:3001';
+  : ''; // Use relative URLs in development (Vite proxy will handle routing)
 
 // Order API functions
 export const orderAPI = {
