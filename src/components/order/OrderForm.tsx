@@ -112,12 +112,14 @@ const OrderForm = () => {
   };
 
   const calculateCost = (values: OrderFormValues) => {
+    console.log('=== COST CALCULATION START ===');
     console.log('Calculating cost with values:', values);
     console.log('Total pages:', totalPages);
-    console.log('Files:', files.length);
+    console.log('Files count:', files.length);
 
     // Custom print type doesn't need cost calculation
     if (values.printType === 'customPrint') {
+      console.log('Custom print type, setting cost to 0');
       setCalculatedCost(0);
       return 0;
     }
@@ -136,8 +138,14 @@ const OrderForm = () => {
     
     let totalCost = 0;
     
+    console.log('Print type:', printType);
+    console.log('Binding color type:', bindingColorType);
+    console.log('Is double sided:', isDoubleSided);
+    console.log('Copies:', copies);
+    
     // Base printing cost calculation
     if (bindingColorType === 'custom' && isBindingType) {
+      console.log('Calculating custom binding cost');
       // Calculate cost for color pages in binding
       if (values.colorPages) {
         const colorPageRanges = values.colorPages.split(',').map(range => range.trim());
@@ -159,6 +167,7 @@ const OrderForm = () => {
         
         const colorCostPerPage = isDoubleSided ? 13 : 8;
         totalCost += colorPagesCount * colorCostPerPage;
+        console.log('Color pages cost:', colorPagesCount * colorCostPerPage);
       }
       
       // Calculate cost for B&W pages in binding
@@ -182,8 +191,10 @@ const OrderForm = () => {
         
         const bwCostPerPage = isDoubleSided ? 1.6 : 1.5;
         totalCost += bwPagesCount * bwCostPerPage;
+        console.log('B&W pages cost:', bwPagesCount * bwCostPerPage);
       }
     } else if (values.printType === 'custom') {
+      console.log('Calculating custom print cost');
       // Calculate cost for color pages
       if (values.colorPages) {
         const colorPageRanges = values.colorPages.split(',').map(range => range.trim());
@@ -205,6 +216,7 @@ const OrderForm = () => {
         
         const colorCostPerPage = isDoubleSided ? 13 : 8;
         totalCost += colorPagesCount * colorCostPerPage;
+        console.log('Color pages cost:', colorPagesCount * colorCostPerPage);
       }
       
       // Calculate cost for B&W pages
@@ -228,8 +240,10 @@ const OrderForm = () => {
         
         const bwCostPerPage = isDoubleSided ? 1.6 : 1.5;
         totalCost += bwPagesCount * bwCostPerPage;
+        console.log('B&W pages cost:', bwPagesCount * bwCostPerPage);
       }
     } else if (printType === 'softBinding' || printType === 'spiralBinding') {
+      console.log('Calculating binding cost');
       // For binding types, calculate based on binding color type
       let pagesCount = calculateSelectedPagesCount(values.selectedPages || 'all', totalPages);
       let costPerPage;
@@ -246,14 +260,19 @@ const OrderForm = () => {
       }
       
       totalCost = effectivePages * costPerPage;
+      console.log('Base binding cost:', totalCost);
       
       // Add binding costs
       if (printType === 'softBinding') {
         totalCost += 25; // Fixed 25 rupees for soft binding
+        console.log('Added soft binding cost: 25');
       } else if (printType === 'spiralBinding') {
-        totalCost += calculateSpiralBindingCost(pagesCount);
+        const spiralCost = calculateSpiralBindingCost(pagesCount);
+        totalCost += spiralCost;
+        console.log('Added spiral binding cost:', spiralCost);
       }
     } else {
+      console.log('Calculating regular print cost');
       // Regular printing (blackAndWhite or color)
       const isColor = values.printType === 'color';
       let pagesCount = calculateSelectedPagesCount(values.selectedPages || 'all', totalPages);
@@ -271,27 +290,33 @@ const OrderForm = () => {
       }
       
       totalCost = effectivePages * costPerPage;
+      console.log('Regular print cost:', totalCost);
     }
     
     totalCost *= copies;
-    console.log('Calculated total cost:', totalCost);
+    console.log('Final cost after copies:', totalCost);
+    console.log('=== COST CALCULATION END ===');
+    
     setCalculatedCost(totalCost);
     return totalCost;
   };
 
   const handleFilesChange = (uploadedFiles: File[]) => {
-    console.log('Files changed:', uploadedFiles.length);
+    console.log('Files changed in OrderForm:', uploadedFiles.length);
     setFiles(uploadedFiles);
   };
 
   const handlePageCountChange = (pageCount: number) => {
-    console.log('Page count changed:', pageCount);
+    console.log('Page count changed in OrderForm:', pageCount);
     setTotalPages(pageCount);
+    
     if (pageCount > 0) {
       form.setValue('selectedPages', `1-${pageCount}`);
-      // Trigger cost calculation immediately
+      // Trigger cost calculation with a delay to ensure form values are updated
       setTimeout(() => {
-        calculateCost(form.getValues());
+        const currentValues = form.getValues();
+        console.log('Triggering cost calculation from page count change');
+        calculateCost(currentValues);
       }, 100);
     } else {
       form.setValue('selectedPages', 'all');
@@ -300,10 +325,13 @@ const OrderForm = () => {
   };
 
   const handlePageRangeChange = (pageRange: string) => {
+    console.log('Page range changed in OrderForm:', pageRange);
     form.setValue('selectedPages', pageRange);
-    // Trigger cost calculation immediately
+    // Trigger cost calculation with a delay to ensure form values are updated
     setTimeout(() => {
-      calculateCost(form.getValues());
+      const currentValues = form.getValues();
+      console.log('Triggering cost calculation from page range change');
+      calculateCost(currentValues);
     }, 100);
   };
 
@@ -439,6 +467,7 @@ const OrderForm = () => {
         console.log('Form values changed, recalculating cost');
         calculateCost(value as OrderFormValues);
       } else if (totalPages === 0 || files.length === 0) {
+        console.log('No pages or files, setting cost to 0');
         setCalculatedCost(0);
       }
     });
@@ -468,6 +497,7 @@ const OrderForm = () => {
         // Recalculate cost when print type changes
         if (totalPages > 0 && files.length > 0) {
           setTimeout(() => {
+            console.log('Print type changed, recalculating cost');
             calculateCost(value as OrderFormValues);
           }, 100);
         }
@@ -486,6 +516,7 @@ const OrderForm = () => {
         // Recalculate cost when binding color type changes
         if (totalPages > 0 && files.length > 0) {
           setTimeout(() => {
+            console.log('Binding color type changed, recalculating cost');
             calculateCost(value as OrderFormValues);
           }, 100);
         }

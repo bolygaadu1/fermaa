@@ -94,6 +94,33 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
     return totalPages;
   };
 
+  const updatePageCountAndNotify = async (fileList: File[]) => {
+    console.log('Updating page count for files:', fileList.length);
+    
+    if (fileList.length === 0) {
+      console.log('No files, setting page count to 0');
+      onPageCountChange(0);
+      onPageRangeChange('all');
+      return;
+    }
+
+    try {
+      const totalPages = await calculateTotalPages(fileList);
+      console.log('Calling onPageCountChange with:', totalPages);
+      
+      // Use setTimeout to ensure the state updates are processed
+      setTimeout(() => {
+        onPageCountChange(totalPages);
+        onPageRangeChange(totalPages > 0 ? `1-${totalPages}` : 'all');
+      }, 50);
+      
+    } catch (error) {
+      console.error('Error calculating pages:', error);
+      onPageCountChange(0);
+      onPageRangeChange('all');
+    }
+  };
+
   const handleFiles = async (newFiles: File[]) => {
     console.log('Handling files:', newFiles.length);
     setIsProcessing(true);
@@ -119,20 +146,13 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
       
       const updatedFiles = [...files, ...validFiles];
       console.log('Updated files list:', updatedFiles.length);
+      
+      // Update state first
       setFiles(updatedFiles);
       onFilesChange(updatedFiles);
       
-      // Calculate total pages for all files
-      try {
-        const totalPages = await calculateTotalPages(updatedFiles);
-        console.log('Calling onPageCountChange with:', totalPages);
-        onPageCountChange(totalPages);
-        onPageRangeChange(totalPages > 0 ? `1-${totalPages}` : 'all');
-      } catch (error) {
-        console.error('Error calculating pages:', error);
-        onPageCountChange(0);
-        onPageRangeChange('all');
-      }
+      // Then update page count and trigger cost calculation
+      await updatePageCountAndNotify(updatedFiles);
       
       toast.success(`${validFiles.length} file(s) added`);
     }
@@ -143,27 +163,13 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
   const removeFile = async (index: number) => {
     console.log('Removing file at index:', index);
     const updatedFiles = files.filter((_, i) => i !== index);
+    
+    // Update state first
     setFiles(updatedFiles);
     onFilesChange(updatedFiles);
     
-    // Reset page count and range when all files are removed
-    if (updatedFiles.length === 0) {
-      console.log('No files left, resetting page count');
-      onPageCountChange(0);
-      onPageRangeChange('all');
-    } else {
-      // Recalculate page count for remaining files
-      try {
-        const totalPages = await calculateTotalPages(updatedFiles);
-        console.log('Recalculated pages after removal:', totalPages);
-        onPageCountChange(totalPages);
-        onPageRangeChange(totalPages > 0 ? `1-${totalPages}` : 'all');
-      } catch (error) {
-        console.error('Error recalculating pages:', error);
-        onPageCountChange(0);
-        onPageRangeChange('all');
-      }
-    }
+    // Then update page count and trigger cost calculation
+    await updatePageCountAndNotify(updatedFiles);
     
     toast.info("File removed");
   };
