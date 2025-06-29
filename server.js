@@ -11,6 +11,7 @@ const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const isProduction = process.env.NODE_ENV === 'production';
 
 // Middleware
 app.use(cors({
@@ -20,8 +21,10 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Serve static files
-app.use(express.static('dist'));
+// Serve static files only in production
+if (isProduction) {
+  app.use(express.static('dist'));
+}
 app.use('/uploads', express.static('uploads'));
 
 // Ensure data directories exist
@@ -256,10 +259,12 @@ app.post('/api/admin/login', (req, res) => {
   }
 });
 
-// Serve React app for all other routes
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
+// Serve React app for all other routes (only in production)
+if (isProduction) {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  });
+}
 
 // Error handling middleware
 app.use((error, req, res, next) => {
@@ -269,6 +274,7 @@ app.use((error, req, res, next) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌍 Environment: ${isProduction ? 'production' : 'development'}`);
   console.log(`📁 Data directory: ${path.join(__dirname, 'data')}`);
   console.log(`📂 Uploads directory: ${path.join(__dirname, 'uploads')}`);
 });
