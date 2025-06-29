@@ -57,7 +57,7 @@ const About = () => {
             </div>
             <div className="flex justify-center">
               <img 
-                src="https://envs.sh/M6q.jpg" 
+                src="/images/main.jpg" 
                 alt="Aishwarya Xerox"
                 className="rounded-lg shadow-lg w-full max-w-md h-[300px] sm:h-[400px] object-cover"
               />
