@@ -23,6 +23,7 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
+  const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -63,6 +64,7 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
   };
 
   const calculateTotalPages = async (fileList: File[]) => {
+    console.log('Calculating total pages for', fileList.length, 'files');
     let totalPages = 0;
     
     for (const file of fileList) {
@@ -72,21 +74,30 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
           const typedarray = new Uint8Array(arrayBuffer);
           const pdf = await pdfjs.getDocument(typedarray).promise;
           totalPages += pdf.numPages;
+          console.log(`PDF ${file.name} has ${pdf.numPages} pages`);
         } catch (error) {
           console.error('Error reading PDF:', error);
           // Fallback to estimated page count
-          totalPages += Math.floor(Math.random() * 20) + 1;
+          const estimatedPages = Math.floor(Math.random() * 20) + 1;
+          totalPages += estimatedPages;
+          console.log(`Estimated ${estimatedPages} pages for ${file.name}`);
         }
       } else {
-        // For non-PDF files, estimate page count
-        totalPages += Math.floor(Math.random() * 20) + 1;
+        // For non-PDF files, estimate page count based on file size
+        const estimatedPages = Math.max(1, Math.floor(file.size / 50000)); // Rough estimate: 50KB per page
+        totalPages += estimatedPages;
+        console.log(`Estimated ${estimatedPages} pages for ${file.name}`);
       }
     }
     
+    console.log('Total calculated pages:', totalPages);
     return totalPages;
   };
 
   const handleFiles = async (newFiles: File[]) => {
+    console.log('Handling files:', newFiles.length);
+    setIsProcessing(true);
+    
     const validFiles = newFiles.filter(file => {
       if (!isValidFileType(file)) {
         toast.error(`${file.name} is not a valid file type. Only PDF and Word documents are allowed.`);
@@ -107,12 +118,14 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
       }
       
       const updatedFiles = [...files, ...validFiles];
+      console.log('Updated files list:', updatedFiles.length);
       setFiles(updatedFiles);
       onFilesChange(updatedFiles);
       
       // Calculate total pages for all files
       try {
         const totalPages = await calculateTotalPages(updatedFiles);
+        console.log('Calling onPageCountChange with:', totalPages);
         onPageCountChange(totalPages);
         onPageRangeChange(totalPages > 0 ? `1-${totalPages}` : 'all');
       } catch (error) {
@@ -123,21 +136,26 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
       
       toast.success(`${validFiles.length} file(s) added`);
     }
+    
+    setIsProcessing(false);
   };
 
   const removeFile = async (index: number) => {
+    console.log('Removing file at index:', index);
     const updatedFiles = files.filter((_, i) => i !== index);
     setFiles(updatedFiles);
     onFilesChange(updatedFiles);
     
     // Reset page count and range when all files are removed
     if (updatedFiles.length === 0) {
+      console.log('No files left, resetting page count');
       onPageCountChange(0);
       onPageRangeChange('all');
     } else {
       // Recalculate page count for remaining files
       try {
         const totalPages = await calculateTotalPages(updatedFiles);
+        console.log('Recalculated pages after removal:', totalPages);
         onPageCountChange(totalPages);
         onPageRangeChange(totalPages > 0 ? `1-${totalPages}` : 'all');
       } catch (error) {
@@ -187,7 +205,7 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
   return (
     <div className="space-y-4">
       <div 
-        className={`file-drop-area ${isDragging ? 'file-drop-active' : ''}`}
+        className={`file-drop-area ${isDragging ? 'file-drop-active' : ''} ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -200,12 +218,15 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
           accept=".pdf,.doc,.docx"
           multiple
           onChange={handleFileChange}
+          disabled={isProcessing}
         />
         <Upload className="mx-auto h-12 w-12 text-xerox-500 mb-2" />
         <p className="text-lg font-semibold text-xerox-700">
-          Drag & Drop Files Here
+          {isProcessing ? 'Processing Files...' : 'Drag & Drop Files Here'}
         </p>
-        <p className="text-gray-500">or click to browse</p>
+        <p className="text-gray-500">
+          {isProcessing ? 'Please wait while we process your files' : 'or click to browse'}
+        </p>
         <p className="text-sm text-gray-500 mt-2">
           Accepted formats: PDF and Word documents only
         </p>

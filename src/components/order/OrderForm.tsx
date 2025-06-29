@@ -112,14 +112,19 @@ const OrderForm = () => {
   };
 
   const calculateCost = (values: OrderFormValues) => {
+    console.log('Calculating cost with values:', values);
+    console.log('Total pages:', totalPages);
+    console.log('Files:', files.length);
+
     // Custom print type doesn't need cost calculation
     if (values.printType === 'customPrint') {
       setCalculatedCost(0);
       return 0;
     }
 
-    // Don't calculate cost if no files are uploaded
-    if (totalPages === 0) {
+    // Don't calculate cost if no files are uploaded or no pages
+    if (totalPages === 0 || files.length === 0) {
+      console.log('No files or pages, setting cost to 0');
       setCalculatedCost(0);
       return 0;
     }
@@ -269,30 +274,37 @@ const OrderForm = () => {
     }
     
     totalCost *= copies;
+    console.log('Calculated total cost:', totalCost);
     setCalculatedCost(totalCost);
     return totalCost;
   };
 
   const handleFilesChange = (uploadedFiles: File[]) => {
+    console.log('Files changed:', uploadedFiles.length);
     setFiles(uploadedFiles);
   };
 
   const handlePageCountChange = (pageCount: number) => {
+    console.log('Page count changed:', pageCount);
     setTotalPages(pageCount);
     if (pageCount > 0) {
       form.setValue('selectedPages', `1-${pageCount}`);
+      // Trigger cost calculation immediately
+      setTimeout(() => {
+        calculateCost(form.getValues());
+      }, 100);
     } else {
       form.setValue('selectedPages', 'all');
       setCalculatedCost(0);
     }
-    // Recalculate cost with new page count
-    calculateCost(form.getValues());
   };
 
   const handlePageRangeChange = (pageRange: string) => {
     form.setValue('selectedPages', pageRange);
-    // Recalculate cost with new page range
-    calculateCost(form.getValues());
+    // Trigger cost calculation immediately
+    setTimeout(() => {
+      calculateCost(form.getValues());
+    }, 100);
   };
 
   const copyOrderId = () => {
@@ -423,14 +435,15 @@ const OrderForm = () => {
   // Watch form values for cost calculation
   useEffect(() => {
     const subscription = form.watch((value) => {
-      if (totalPages > 0 && value.printType !== 'customPrint') {
+      if (totalPages > 0 && files.length > 0 && value.printType !== 'customPrint') {
+        console.log('Form values changed, recalculating cost');
         calculateCost(value as OrderFormValues);
-      } else if (totalPages === 0) {
+      } else if (totalPages === 0 || files.length === 0) {
         setCalculatedCost(0);
       }
     });
     return () => subscription.unsubscribe();
-  }, [form.watch, totalPages]);
+  }, [form.watch, totalPages, files.length]);
 
   // Watch print type for custom printing option and binding types
   useEffect(() => {
@@ -453,8 +466,10 @@ const OrderForm = () => {
         }
         
         // Recalculate cost when print type changes
-        if (totalPages > 0) {
-          calculateCost(value as OrderFormValues);
+        if (totalPages > 0 && files.length > 0) {
+          setTimeout(() => {
+            calculateCost(value as OrderFormValues);
+          }, 100);
         }
       }
       
@@ -469,13 +484,15 @@ const OrderForm = () => {
         }
         
         // Recalculate cost when binding color type changes
-        if (totalPages > 0) {
-          calculateCost(value as OrderFormValues);
+        if (totalPages > 0 && files.length > 0) {
+          setTimeout(() => {
+            calculateCost(value as OrderFormValues);
+          }, 100);
         }
       }
     });
     return () => subscription.unsubscribe();
-  }, [form.watch, totalPages]);
+  }, [form.watch, totalPages, files.length]);
 
   if (orderSubmitted) {
     return (
@@ -772,7 +789,11 @@ const OrderForm = () => {
                               field.onChange(e.target.value);
                               const newValues = form.getValues();
                               newValues.selectedPages = e.target.value;
-                              calculateCost(newValues);
+                              if (totalPages > 0 && files.length > 0) {
+                                setTimeout(() => {
+                                  calculateCost(newValues);
+                                }, 100);
+                              }
                             }}
                           />
                         </FormControl>
@@ -800,7 +821,11 @@ const OrderForm = () => {
                               disabled={totalPages === 0}
                               onChange={(e) => {
                                 field.onChange(e.target.value);
-                                calculateCost(form.getValues());
+                                if (totalPages > 0 && files.length > 0) {
+                                  setTimeout(() => {
+                                    calculateCost(form.getValues());
+                                  }, 100);
+                                }
                               }}
                             />
                           </FormControl>
@@ -825,7 +850,11 @@ const OrderForm = () => {
                               disabled={totalPages === 0}
                               onChange={(e) => {
                                 field.onChange(e.target.value);
-                                calculateCost(form.getValues());
+                                if (totalPages > 0 && files.length > 0) {
+                                  setTimeout(() => {
+                                    calculateCost(form.getValues());
+                                  }, 100);
+                                }
                               }}
                             />
                           </FormControl>
