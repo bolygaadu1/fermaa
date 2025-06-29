@@ -281,12 +281,15 @@ const OrderForm = () => {
         console.error('Error uploading files:', error);
         toast.error('Failed to upload files');
       }
+    } else {
+      // Clear uploaded files when no files are selected
+      setUploadedFiles([]);
     }
   };
 
   const handlePageCountChange = (pageCount: number) => {
     setTotalPages(pageCount);
-    form.setValue('selectedPages', `1-${pageCount}`);
+    form.setValue('selectedPages', pageCount > 0 ? `1-${pageCount}` : 'all');
     calculateCost(form.getValues());
   };
 
@@ -865,7 +868,7 @@ const OrderForm = () => {
                 <h4 className="text-sm font-medium text-gray-700 mb-3">Uploaded Files Preview</h4>
                 <div className="space-y-3">
                   {files.map((file, index) => (
-                    <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <div key={`${file.name}-${index}-${file.lastModified}`} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                       <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-xerox-600 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{file.name}</p>

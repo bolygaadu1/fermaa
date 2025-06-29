@@ -55,6 +55,10 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
     if (e.target.files && e.target.files.length > 0) {
       handleFiles(Array.from(e.target.files));
     }
+    // Reset the input value to allow re-uploading the same file
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleFiles = async (newFiles: File[]) => {
@@ -101,8 +105,34 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
     const updatedFiles = files.filter((_, i) => i !== index);
     setFiles(updatedFiles);
     onFilesChange(updatedFiles);
-    onPageCountChange(0);
-    onPageRangeChange('all');
+    
+    // Reset page count and range when all files are removed
+    if (updatedFiles.length === 0) {
+      onPageCountChange(0);
+      onPageRangeChange('all');
+    } else {
+      // Recalculate page count for remaining files
+      const remainingFile = updatedFiles[updatedFiles.length - 1];
+      if (remainingFile.type === 'application/pdf') {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            const typedarray = new Uint8Array(e.target?.result as ArrayBuffer);
+            const pdf = await pdfjs.getDocument(typedarray).promise;
+            onPageCountChange(pdf.numPages);
+            onPageRangeChange(`1-${pdf.numPages}`);
+          } catch (error) {
+            console.error('Error reading PDF:', error);
+          }
+        };
+        reader.readAsArrayBuffer(remainingFile);
+      } else {
+        const pageCount = Math.floor(Math.random() * 20) + 1;
+        onPageCountChange(pageCount);
+        onPageRangeChange(`1-${pageCount}`);
+      }
+    }
+    
     toast.info("File removed");
   };
 
@@ -172,7 +202,7 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
           <h3 className="text-lg font-medium mb-3">Uploaded Files</h3>
           <div className="space-y-2 max-h-60 overflow-y-auto">
             {files.map((file, index) => (
-              <div key={index} className="file-item">
+              <div key={`${file.name}-${index}-${file.lastModified}`} className="file-item">
                 <div className="flex items-center">
                   <FileText className="h-5 w-5 text-xerox-600 mr-3" />
                   <div>
