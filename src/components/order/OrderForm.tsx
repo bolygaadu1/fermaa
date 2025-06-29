@@ -25,7 +25,6 @@ import { z } from "zod";
 import FileUploader from './FileUploader';
 import { CheckCircle, Copy, Phone, Mail, Calculator, FileText, Clock } from "lucide-react";
 import { toast } from "sonner";
-import { orderAPI, fileAPI } from '@/services/api';
 
 const orderSchema = z.object({
   fullName: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -46,7 +45,6 @@ type OrderFormValues = z.infer<typeof orderSchema>;
 const OrderForm = () => {
   const { toast: showToast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
-  const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
   const [orderSubmitted, setOrderSubmitted] = useState(false);
   const [submittedOrderId, setSubmittedOrderId] = useState('');
   const [totalPages, setTotalPages] = useState(0);
@@ -55,7 +53,6 @@ const OrderForm = () => {
   const [isCustomPrint, setIsCustomPrint] = useState(false);
   const [isBindingType, setIsBindingType] = useState(false);
   const [isCustomPrintType, setIsCustomPrintType] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<OrderFormValues>({
     resolver: zodResolver(orderSchema),
@@ -276,27 +273,8 @@ const OrderForm = () => {
     return totalCost;
   };
 
-  const handleFilesChange = async (uploadedFilesList: File[]) => {
-    // Update local files state immediately for UI display
-    setFiles(uploadedFilesList);
-    
-    if (uploadedFilesList.length > 0) {
-      try {
-        const uploadedFilesData = await fileAPI.upload(uploadedFilesList);
-        setUploadedFiles(uploadedFilesData);
-      } catch (error) {
-        console.error('Error uploading files:', error);
-        toast.error('Failed to upload files');
-        // Reset files state on upload error
-        setFiles([]);
-        setUploadedFiles([]);
-      }
-    } else {
-      // Clear uploaded files when no files are selected
-      setUploadedFiles([]);
-      // Reset cost calculation when no files
-      setCalculatedCost(0);
-    }
+  const handleFilesChange = (uploadedFiles: File[]) => {
+    setFiles(uploadedFiles);
   };
 
   const handlePageCountChange = (pageCount: number) => {
@@ -352,92 +330,88 @@ const OrderForm = () => {
       return;
     }
 
-    setIsSubmitting(true);
-
-    try {
-      // For custom print type, only validate required fields
-      if (data.printType === 'customPrint') {
-        const orderData = {
-          ...data,
-          files: uploadedFiles.map(file => ({
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            path: file.path,
-          })),
-          totalCost: 0, // No cost calculation for custom print
-          copies: 1, // Default value
-          paperSize: 'a4', // Default value
-          printSide: 'single', // Default value
-          selectedPages: 'all', // Default value
-        };
-
-        const createdOrder = await orderAPI.create(orderData);
-        setSubmittedOrderId(createdOrder.orderId);
-        setOrderSubmitted(true);
-
-        showToast({
-          title: "Order submitted successfully!",
-          description: `Your order ID is ${createdOrder.orderId}`,
-        });
-        return;
-      }
-
-      // Regular validation for other print types
-      if (data.printType === 'custom' || (isBindingType && data.bindingColorType === 'custom')) {
-        if (!data.colorPages && !data.bwPages) {
-          showToast({
-            title: "Page selection required",
-            description: "Please specify either color or black & white pages.",
-            variant: "destructive",
-          });
-          return;
-        }
-      } else if (!validatePageSelection(data.selectedPages || 'all', totalPages)) {
-        showToast({
-          title: "Invalid page selection",
-          description: "Please check your page selection.",
-          variant: "destructive",
-        });
-        return;
-      }
-
+    // For custom print type, only validate required fields
+    if (data.printType === 'customPrint') {
       const orderData = {
         ...data,
-        files: uploadedFiles.map(file => ({
+        files: files.map(file => ({
           name: file.name,
           size: file.size,
           type: file.type,
-          path: file.path,
+          path: `/uploads/${file.name}`,
         })),
-        totalCost: calculatedCost,
+        orderId: `ORD-${Date.now()}`,
+        orderDate: new Date().toISOString(),
+        status: "pending",
+        totalCost: 0, // No cost calculation for custom print
+        copies: 1, // Default value
+        paperSize: 'a4', // Default value
+        printSide: 'single', // Default value
+        selectedPages: 'all', // Default value
       };
 
-      const createdOrder = await orderAPI.create(orderData);
-      setSubmittedOrderId(createdOrder.orderId);
+      const existingOrders = JSON.parse(localStorage.getItem('xeroxOrders') || '[]');
+      localStorage.setItem('xeroxOrders', JSON.stringify([...existingOrders, orderData]));
+
+      setSubmittedOrderId(orderData.orderId);
       setOrderSubmitted(true);
 
       showToast({
         title: "Order submitted successfully!",
-        description: `Your order ID is ${createdOrder.orderId}`,
+        description: `Your order ID is ${orderData.orderId}`,
       });
-    } catch (error) {
-      console.error('Error submitting order:', error);
+      return;
+    }
+
+    // Regular validation for other print types
+    if (data.printType === 'custom' || (isBindingType && data.bindingColorType === 'custom')) {
+      if (!data.colorPages && !data.bwPages) {
+        showToast({
+          title: "Page selection required",
+          description: "Please specify either color or black & white pages.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } else if (!validatePageSelection(data.selectedPages || 'all', totalPages)) {
       showToast({
-        title: "Error submitting order",
-        description: "Please try again later.",
+        title: "Invalid page selection",
+        description: "Please check your page selection.",
         variant: "destructive",
       });
-    } finally {
-      setIsSubmitting(false);
+      return;
     }
+
+    const orderData = {
+      ...data,
+      files: files.map(file => ({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        path: `/uploads/${file.name}`,
+      })),
+      orderId: `ORD-${Date.now()}`,
+      orderDate: new Date().toISOString(),
+      status: "pending",
+      totalCost: calculatedCost,
+    };
+
+    const existingOrders = JSON.parse(localStorage.getItem('xeroxOrders') || '[]');
+    localStorage.setItem('xeroxOrders', JSON.stringify([...existingOrders, orderData]));
+
+    setSubmittedOrderId(orderData.orderId);
+    setOrderSubmitted(true);
+
+    showToast({
+      title: "Order submitted successfully!",
+      description: `Your order ID is ${orderData.orderId}`,
+    });
   };
 
   const startNewOrder = () => {
     setOrderSubmitted(false);
     setSubmittedOrderId('');
     setFiles([]);
-    setUploadedFiles([]);
     setTotalPages(0);
     setCalculatedCost(0);
     setIsCustomPrint(false);
@@ -983,9 +957,9 @@ const OrderForm = () => {
             <Button 
               type="submit" 
               className="w-full md:w-auto bg-xerox-600 hover:bg-xerox-700"
-              disabled={files.length === 0 || isSubmitting}
+              disabled={files.length === 0}
             >
-              {isSubmitting ? 'Submitting...' : 'Submit Order'}
+              Submit Order
             </Button>
           </div>
         </form>

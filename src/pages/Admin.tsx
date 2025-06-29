@@ -5,6 +5,7 @@ import OrdersList from '@/components/admin/OrdersList';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { LogOut, Download, FileText, Trash2 } from "lucide-react";
+import { fileStorage } from '@/services/fileStorage';
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -16,7 +17,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { orderAPI, fileAPI } from '@/services/api';
 
 const Admin = () => {
   const [activeTab, setActiveTab] = useState("orders");
@@ -40,44 +40,30 @@ const Admin = () => {
     navigate('/login');
   };
 
-  const downloadAllFiles = async () => {
-    try {
-      const files = await fileAPI.getAll();
-      
-      if (files.length === 0) {
-        toast.info("No files available to download");
-        return;
-      }
-      
-      toast.success(`Found ${files.length} files. Download them individually from the files list.`);
-    } catch (error) {
-      console.error('Error fetching files:', error);
-      toast.error("Failed to fetch files");
+  const downloadAllFiles = () => {
+    const files = fileStorage.getAllFiles();
+    
+    if (files.length === 0) {
+      toast.info("No files available to download");
+      return;
     }
+    
+    toast.success(`Preparing ${files.length} files for download`);
+    // In a real app, this would trigger a zip download or batch download process
   };
 
-  const clearAllFiles = async () => {
-    try {
-      await fileAPI.deleteAll();
-      toast.success("All uploaded files have been cleared");
-      setShowClearFilesDialog(false);
-    } catch (error) {
-      console.error('Error clearing files:', error);
-      toast.error("Failed to clear files");
-    }
+  const clearAllFiles = () => {
+    fileStorage.clearAllFiles();
+    toast.success("All uploaded files have been cleared");
+    setShowClearFilesDialog(false);
   };
 
-  const clearAllOrders = async () => {
-    try {
-      await orderAPI.deleteAll();
-      toast.success("All orders have been cleared");
-      setShowClearOrdersDialog(false);
-      // Force reload the component to update UI
-      window.location.reload();
-    } catch (error) {
-      console.error('Error clearing orders:', error);
-      toast.error("Failed to clear orders");
-    }
+  const clearAllOrders = () => {
+    localStorage.setItem('xeroxOrders', JSON.stringify([]));
+    toast.success("All orders have been cleared");
+    setShowClearOrdersDialog(false);
+    // Force reload the component to update UI
+    window.location.reload();
   };
   
   if (!isLoggedIn) {
@@ -128,8 +114,8 @@ const Admin = () => {
               <div className="space-y-4">
                 <div className="p-4 bg-gray-50 rounded-md">
                   <h3 className="font-medium text-gray-700 text-sm sm:text-base">File Storage</h3>
-                  <p className="mt-1 text-gray-600 text-sm">Customer files are stored on the server in the uploads folder. 
-                  Files are automatically managed and can be downloaded from the admin panel.</p>
+                  <p className="mt-1 text-gray-600 text-sm">Customer files are stored locally in the browser. 
+                  In a production environment, you would implement server storage or cloud storage solutions for better persistence.</p>
                 </div>
                 <div className="p-4 bg-gray-50 rounded-md">
                   <h3 className="font-medium text-gray-700 text-sm sm:text-base">Admin Credentials</h3>
@@ -147,7 +133,7 @@ const Admin = () => {
                     className="flex items-center gap-2 text-sm"
                     onClick={downloadAllFiles}
                   >
-                    <Download className="h-4 w-4" /> View All Files
+                    <Download className="h-4 w-4" /> Download All
                   </Button>
                   <Button 
                     variant="outline" 
@@ -206,50 +192,39 @@ const Admin = () => {
 // Simple files manager component
 const FilesManager = () => {
   const [files, setFiles] = useState<Array<{name: string, size: number, type: string, path: string}>>([]);
-  const [loading, setLoading] = useState(true);
   
   useEffect(() => {
-    loadFiles();
+    // Get all stored files
+    const storedFiles = fileStorage.getAllFiles();
+    setFiles(storedFiles);
   }, []);
-
-  const loadFiles = async () => {
-    try {
-      setLoading(true);
-      const filesData = await fileAPI.getAll();
-      setFiles(filesData);
-    } catch (error) {
-      console.error('Error loading files:', error);
-      toast.error('Failed to load files');
-    } finally {
-      setLoading(false);
-    }
-  };
   
   const handleFileDownload = (file: {path: string, name: string}) => {
     try {
-      // Create download link
-      const link = document.createElement('a');
-      link.href = file.path;
-      link.download = file.name;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      toast.success(`Downloading ${file.name}`);
+      const storedFile = fileStorage.getFile(file.path);
+      if (storedFile?.data) {
+        // Create a URL for the blob
+        const url = URL.createObjectURL(storedFile.data);
+        // Create a temporary anchor element
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = file.name;
+        document.body.appendChild(a);
+        // Trigger download
+        a.click();
+        // Clean up
+        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        toast.success(`Downloading ${file.name}`);
+      } else {
+        toast.error("File data not available");
+      }
     } catch (error) {
       console.error('Error downloading file:', error);
       toast.error(`Failed to download ${file.name}`);
     }
   };
-
-  if (loading) {
-    return (
-      <div className="text-center py-8">
-        <p className="text-gray-500">Loading files...</p>
-      </div>
-    );
-  }
   
   return (
     <div>

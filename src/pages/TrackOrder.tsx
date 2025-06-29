@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Search, Package, Clock, CheckCircle, Phone, Mail, MapPin } from "lucide-react";
 import { toast } from "sonner";
-import { orderAPI } from '@/services/api';
 
 interface Order {
   orderId: string;
@@ -42,16 +41,26 @@ const TrackOrder = () => {
     setNotFound(false);
     setOrder(null);
 
-    try {
-      const foundOrder = await orderAPI.getById(orderId.trim());
-      setOrder(foundOrder);
-      toast.success("Order found!");
-    } catch (error) {
-      setNotFound(true);
-      toast.error("Order not found. Please check your order ID.");
-    } finally {
-      setLoading(false);
-    }
+    // Simulate loading delay
+    setTimeout(() => {
+      try {
+        const existingOrders = JSON.parse(localStorage.getItem('xeroxOrders') || '[]') as Order[];
+        const foundOrder = existingOrders.find(order => order.orderId === orderId.trim());
+        
+        if (foundOrder) {
+          setOrder(foundOrder);
+          toast.success("Order found!");
+        } else {
+          setNotFound(true);
+          toast.error("Order not found. Please check your order ID.");
+        }
+      } catch (error) {
+        console.error('Error searching for order:', error);
+        toast.error("Error searching for order");
+      } finally {
+        setLoading(false);
+      }
+    }, 1000);
   };
 
   const getStatusIcon = (status: string) => {

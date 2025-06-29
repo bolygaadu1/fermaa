@@ -2,6 +2,7 @@ import { useState, useRef, DragEvent, ChangeEvent, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Upload, X, FileText, Eye } from 'lucide-react';
+import { fileStorage, StoredFile } from '@/services/fileStorage';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -95,6 +96,16 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
     });
     
     if (validFiles.length > 0) {
+      // Store files in the file storage service
+      for (const file of validFiles) {
+        try {
+          await fileStorage.saveFile(file);
+        } catch (error) {
+          console.error('Error storing file:', error);
+          toast.error(`Failed to store ${file.name}`);
+        }
+      }
+      
       const updatedFiles = [...files, ...validFiles];
       setFiles(updatedFiles);
       onFilesChange(updatedFiles);
