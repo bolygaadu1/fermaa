@@ -2,7 +2,6 @@ import { useState, useRef, DragEvent, ChangeEvent, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Upload, X, FileText, Eye } from 'lucide-react';
-import { fileStorage, StoredFile } from '@/services/fileStorage';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,7 +22,6 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
-  const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -63,68 +61,7 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
     }
   };
 
-  const calculateTotalPages = async (fileList: File[]) => {
-    console.log('Calculating total pages for', fileList.length, 'files');
-    let totalPages = 0;
-    
-    for (const file of fileList) {
-      if (file.type === 'application/pdf') {
-        try {
-          const arrayBuffer = await file.arrayBuffer();
-          const typedarray = new Uint8Array(arrayBuffer);
-          const pdf = await pdfjs.getDocument(typedarray).promise;
-          totalPages += pdf.numPages;
-          console.log(`PDF ${file.name} has ${pdf.numPages} pages`);
-        } catch (error) {
-          console.error('Error reading PDF:', error);
-          // Fallback to estimated page count
-          const estimatedPages = Math.floor(Math.random() * 20) + 1;
-          totalPages += estimatedPages;
-          console.log(`Estimated ${estimatedPages} pages for ${file.name}`);
-        }
-      } else {
-        // For non-PDF files, estimate page count based on file size
-        const estimatedPages = Math.max(1, Math.floor(file.size / 50000)); // Rough estimate: 50KB per page
-        totalPages += estimatedPages;
-        console.log(`Estimated ${estimatedPages} pages for ${file.name}`);
-      }
-    }
-    
-    console.log('Total calculated pages:', totalPages);
-    return totalPages;
-  };
-
-  const updatePageCountAndNotify = async (fileList: File[]) => {
-    console.log('Updating page count for files:', fileList.length);
-    
-    if (fileList.length === 0) {
-      console.log('No files, setting page count to 0');
-      onPageCountChange(0);
-      onPageRangeChange('all');
-      return;
-    }
-
-    try {
-      const totalPages = await calculateTotalPages(fileList);
-      console.log('Calling onPageCountChange with:', totalPages);
-      
-      // Use setTimeout to ensure the state updates are processed
-      setTimeout(() => {
-        onPageCountChange(totalPages);
-        onPageRangeChange(totalPages > 0 ? `1-${totalPages}` : 'all');
-      }, 50);
-      
-    } catch (error) {
-      console.error('Error calculating pages:', error);
-      onPageCountChange(0);
-      onPageRangeChange('all');
-    }
-  };
-
   const handleFiles = async (newFiles: File[]) => {
-    console.log('Handling files:', newFiles.length);
-    setIsProcessing(true);
-    
     const validFiles = newFiles.filter(file => {
       if (!isValidFileType(file)) {
         toast.error(`${file.name} is not a valid file type. Only PDF and Word documents are allowed.`);
@@ -134,42 +71,67 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
     });
     
     if (validFiles.length > 0) {
-      // Store files in the file storage service
       for (const file of validFiles) {
         try {
-          await fileStorage.saveFile(file);
+          if (file.type === 'application/pdf') {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+              const typedarray = new Uint8Array(e.target?.result as ArrayBuffer);
+              const pdf = await pdfjs.getDocument(typedarray).promise;
+              onPageCountChange(pdf.numPages);
+              onPageRangeChange(`1-${pdf.numPages}`);
+            };
+            reader.readAsArrayBuffer(file);
+          } else {
+            const pageCount = Math.floor(Math.random() * 20) + 1;
+            onPageCountChange(pageCount);
+            onPageRangeChange(`1-${pageCount}`);
+          }
+          
         } catch (error) {
-          console.error('Error storing file:', error);
-          toast.error(`Failed to store ${file.name}`);
+          console.error('Error processing file:', error);
+          toast.error(`Failed to process ${file.name}`);
         }
       }
       
       const updatedFiles = [...files, ...validFiles];
-      console.log('Updated files list:', updatedFiles.length);
-      
-      // Update state first
       setFiles(updatedFiles);
       onFilesChange(updatedFiles);
-      
-      // Then update page count and trigger cost calculation
-      await updatePageCountAndNotify(updatedFiles);
-      
       toast.success(`${validFiles.length} file(s) added`);
     }
-    
-    setIsProcessing(false);
   };
 
-  const removeFile = async (index: number) => {
-    console.log('Removing file at index:', index);
+  const removeFile = (index: number) => {
     const updatedFiles = files.filter((_, i) => i !== index);
-    
-    // Update state first
     setFiles(updatedFiles);
     onFilesChange(updatedFiles);
     
-    // Then update page count and trigger cost calculation
-    await updatePageCountAndNotify(updatedFiles);
+    // Reset page count and range when all files are removed
+    if (updatedFiles.length === 0) {
+      onPageCountChange(0);
+      onPageRangeChange('all');
+    } else {
+      // Recalculate page count for remaining files
+      const remainingFile = updatedFiles[updatedFiles.length - 1];
+      if (remainingFile.type === 'application/pdf') {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            const typedarray = new Uint8Array(e.target?.result as ArrayBuffer);
+            const pdf = await pdfjs.getDocument(typedarray).promise;
+            onPageCountChange(pdf.numPages);
+            onPageRangeChange(`1-${pdf.numPages}`);
+          } catch (error) {
+            console.error('Error reading PDF:', error);
+          }
+        };
+        reader.readAsArrayBuffer(remainingFile);
+      } else {
+        const pageCount = Math.floor(Math.random() * 20) + 1;
+        onPageCountChange(pageCount);
+        onPageRangeChange(`1-${pageCount}`);
+      }
+    }
     
     toast.info("File removed");
   };
@@ -211,7 +173,7 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
   return (
     <div className="space-y-4">
       <div 
-        className={`file-drop-area ${isDragging ? 'file-drop-active' : ''} ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}
+        className={`file-drop-area ${isDragging ? 'file-drop-active' : ''}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -224,15 +186,12 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
           accept=".pdf,.doc,.docx"
           multiple
           onChange={handleFileChange}
-          disabled={isProcessing}
         />
         <Upload className="mx-auto h-12 w-12 text-xerox-500 mb-2" />
         <p className="text-lg font-semibold text-xerox-700">
-          {isProcessing ? 'Processing Files...' : 'Drag & Drop Files Here'}
+          Drag & Drop Files Here
         </p>
-        <p className="text-gray-500">
-          {isProcessing ? 'Please wait while we process your files' : 'or click to browse'}
-        </p>
+        <p className="text-gray-500">or click to browse</p>
         <p className="text-sm text-gray-500 mt-2">
           Accepted formats: PDF and Word documents only
         </p>
@@ -243,7 +202,7 @@ const FileUploader = ({ onFilesChange, onPageCountChange, onPageRangeChange }: F
           <h3 className="text-lg font-medium mb-3">Uploaded Files</h3>
           <div className="space-y-2 max-h-60 overflow-y-auto">
             {files.map((file, index) => (
-              <div key={`${file.name}-${index}-${file.lastModified || Date.now()}`} className="file-item">
+              <div key={`${file.name}-${index}-${file.lastModified}`} className="file-item">
                 <div className="flex items-center">
                   <FileText className="h-5 w-5 text-xerox-600 mr-3" />
                   <div>

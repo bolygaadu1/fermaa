@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Lock } from 'lucide-react';
+import { adminAPI } from '@/services/api';
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -26,24 +27,23 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     
-    // Simulate loading delay
-    setTimeout(() => {
-      if (username === 'admin' && password === 'xerox123') {
-        localStorage.setItem('adminLoggedIn', 'true');
-        toast({
-          title: "Login successful",
-          description: "Welcome to the admin dashboard",
-        });
-        navigate('/admin');
-      } else {
-        toast({
-          title: "Login failed",
-          description: "Invalid username or password",
-          variant: "destructive",
-        });
-      }
+    try {
+      await adminAPI.login(username, password);
+      localStorage.setItem('adminLoggedIn', 'true');
+      toast({
+        title: "Login successful",
+        description: "Welcome to the admin dashboard",
+      });
+      navigate('/admin');
+    } catch (error) {
+      toast({
+        title: "Login failed",
+        description: "Invalid username or password",
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-    }, 500);
+    }
   };
 
   return (

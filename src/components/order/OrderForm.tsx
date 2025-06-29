@@ -25,6 +25,7 @@ import { z } from "zod";
 import FileUploader from './FileUploader';
 import { CheckCircle, Copy, Phone, Mail, Calculator, FileText, Clock } from "lucide-react";
 import { toast } from "sonner";
+import { orderAPI, fileAPI } from '@/services/api';
 
 const orderSchema = z.object({
   fullName: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -45,6 +46,7 @@ type OrderFormValues = z.infer<typeof orderSchema>;
 const OrderForm = () => {
   const { toast: showToast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
   const [orderSubmitted, setOrderSubmitted] = useState(false);
   const [submittedOrderId, setSubmittedOrderId] = useState('');
   const [totalPages, setTotalPages] = useState(0);
@@ -53,6 +55,7 @@ const OrderForm = () => {
   const [isCustomPrint, setIsCustomPrint] = useState(false);
   const [isBindingType, setIsBindingType] = useState(false);
   const [isCustomPrintType, setIsCustomPrintType] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<OrderFormValues>({
     resolver: zodResolver(orderSchema),
@@ -112,21 +115,8 @@ const OrderForm = () => {
   };
 
   const calculateCost = (values: OrderFormValues) => {
-    console.log('=== COST CALCULATION START ===');
-    console.log('Calculating cost with values:', values);
-    console.log('Total pages:', totalPages);
-    console.log('Files count:', files.length);
-
     // Custom print type doesn't need cost calculation
     if (values.printType === 'customPrint') {
-      console.log('Custom print type, setting cost to 0');
-      setCalculatedCost(0);
-      return 0;
-    }
-
-    // Don't calculate cost if no files are uploaded or no pages
-    if (totalPages === 0 || files.length === 0) {
-      console.log('No files or pages, setting cost to 0');
       setCalculatedCost(0);
       return 0;
     }
@@ -138,14 +128,8 @@ const OrderForm = () => {
     
     let totalCost = 0;
     
-    console.log('Print type:', printType);
-    console.log('Binding color type:', bindingColorType);
-    console.log('Is double sided:', isDoubleSided);
-    console.log('Copies:', copies);
-    
     // Base printing cost calculation
     if (bindingColorType === 'custom' && isBindingType) {
-      console.log('Calculating custom binding cost');
       // Calculate cost for color pages in binding
       if (values.colorPages) {
         const colorPageRanges = values.colorPages.split(',').map(range => range.trim());
@@ -167,7 +151,6 @@ const OrderForm = () => {
         
         const colorCostPerPage = isDoubleSided ? 13 : 8;
         totalCost += colorPagesCount * colorCostPerPage;
-        console.log('Color pages cost:', colorPagesCount * colorCostPerPage);
       }
       
       // Calculate cost for B&W pages in binding
@@ -191,10 +174,8 @@ const OrderForm = () => {
         
         const bwCostPerPage = isDoubleSided ? 1.6 : 1.5;
         totalCost += bwPagesCount * bwCostPerPage;
-        console.log('B&W pages cost:', bwPagesCount * bwCostPerPage);
       }
     } else if (values.printType === 'custom') {
-      console.log('Calculating custom print cost');
       // Calculate cost for color pages
       if (values.colorPages) {
         const colorPageRanges = values.colorPages.split(',').map(range => range.trim());
@@ -216,7 +197,6 @@ const OrderForm = () => {
         
         const colorCostPerPage = isDoubleSided ? 13 : 8;
         totalCost += colorPagesCount * colorCostPerPage;
-        console.log('Color pages cost:', colorPagesCount * colorCostPerPage);
       }
       
       // Calculate cost for B&W pages
@@ -240,10 +220,8 @@ const OrderForm = () => {
         
         const bwCostPerPage = isDoubleSided ? 1.6 : 1.5;
         totalCost += bwPagesCount * bwCostPerPage;
-        console.log('B&W pages cost:', bwPagesCount * bwCostPerPage);
       }
     } else if (printType === 'softBinding' || printType === 'spiralBinding') {
-      console.log('Calculating binding cost');
       // For binding types, calculate based on binding color type
       let pagesCount = calculateSelectedPagesCount(values.selectedPages || 'all', totalPages);
       let costPerPage;
@@ -260,19 +238,14 @@ const OrderForm = () => {
       }
       
       totalCost = effectivePages * costPerPage;
-      console.log('Base binding cost:', totalCost);
       
       // Add binding costs
       if (printType === 'softBinding') {
         totalCost += 25; // Fixed 25 rupees for soft binding
-        console.log('Added soft binding cost: 25');
       } else if (printType === 'spiralBinding') {
-        const spiralCost = calculateSpiralBindingCost(pagesCount);
-        totalCost += spiralCost;
-        console.log('Added spiral binding cost:', spiralCost);
+        totalCost += calculateSpiralBindingCost(pagesCount);
       }
     } else {
-      console.log('Calculating regular print cost');
       // Regular printing (blackAndWhite or color)
       const isColor = values.printType === 'color';
       let pagesCount = calculateSelectedPagesCount(values.selectedPages || 'all', totalPages);
@@ -290,49 +263,39 @@ const OrderForm = () => {
       }
       
       totalCost = effectivePages * costPerPage;
-      console.log('Regular print cost:', totalCost);
     }
     
     totalCost *= copies;
-    console.log('Final cost after copies:', totalCost);
-    console.log('=== COST CALCULATION END ===');
-    
     setCalculatedCost(totalCost);
     return totalCost;
   };
 
-  const handleFilesChange = (uploadedFiles: File[]) => {
-    console.log('Files changed in OrderForm:', uploadedFiles.length);
-    setFiles(uploadedFiles);
-  };
-
-  const handlePageCountChange = (pageCount: number) => {
-    console.log('Page count changed in OrderForm:', pageCount);
-    setTotalPages(pageCount);
+  const handleFilesChange = async (uploadedFilesList: File[]) => {
+    setFiles(uploadedFilesList);
     
-    if (pageCount > 0) {
-      form.setValue('selectedPages', `1-${pageCount}`);
-      // Trigger cost calculation with a delay to ensure form values are updated
-      setTimeout(() => {
-        const currentValues = form.getValues();
-        console.log('Triggering cost calculation from page count change');
-        calculateCost(currentValues);
-      }, 100);
+    if (uploadedFilesList.length > 0) {
+      try {
+        const uploadedFilesData = await fileAPI.upload(uploadedFilesList);
+        setUploadedFiles(uploadedFilesData);
+      } catch (error) {
+        console.error('Error uploading files:', error);
+        toast.error('Failed to upload files');
+      }
     } else {
-      form.setValue('selectedPages', 'all');
-      setCalculatedCost(0);
+      // Clear uploaded files when no files are selected
+      setUploadedFiles([]);
     }
   };
 
+  const handlePageCountChange = (pageCount: number) => {
+    setTotalPages(pageCount);
+    form.setValue('selectedPages', pageCount > 0 ? `1-${pageCount}` : 'all');
+    calculateCost(form.getValues());
+  };
+
   const handlePageRangeChange = (pageRange: string) => {
-    console.log('Page range changed in OrderForm:', pageRange);
     form.setValue('selectedPages', pageRange);
-    // Trigger cost calculation with a delay to ensure form values are updated
-    setTimeout(() => {
-      const currentValues = form.getValues();
-      console.log('Triggering cost calculation from page range change');
-      calculateCost(currentValues);
-    }, 100);
+    calculateCost(form.getValues());
   };
 
   const copyOrderId = () => {
@@ -370,88 +333,92 @@ const OrderForm = () => {
       return;
     }
 
-    // For custom print type, only validate required fields
-    if (data.printType === 'customPrint') {
-      const orderData = {
-        ...data,
-        files: files.map(file => ({
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          path: `/uploads/${file.name}`,
-        })),
-        orderId: `ORD-${Date.now()}`,
-        orderDate: new Date().toISOString(),
-        status: "pending",
-        totalCost: 0, // No cost calculation for custom print
-        copies: 1, // Default value
-        paperSize: 'a4', // Default value
-        printSide: 'single', // Default value
-        selectedPages: 'all', // Default value
-      };
+    setIsSubmitting(true);
 
-      const existingOrders = JSON.parse(localStorage.getItem('xeroxOrders') || '[]');
-      localStorage.setItem('xeroxOrders', JSON.stringify([...existingOrders, orderData]));
+    try {
+      // For custom print type, only validate required fields
+      if (data.printType === 'customPrint') {
+        const orderData = {
+          ...data,
+          files: uploadedFiles.map(file => ({
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            path: file.path,
+          })),
+          totalCost: 0, // No cost calculation for custom print
+          copies: 1, // Default value
+          paperSize: 'a4', // Default value
+          printSide: 'single', // Default value
+          selectedPages: 'all', // Default value
+        };
 
-      setSubmittedOrderId(orderData.orderId);
-      setOrderSubmitted(true);
+        const createdOrder = await orderAPI.create(orderData);
+        setSubmittedOrderId(createdOrder.orderId);
+        setOrderSubmitted(true);
 
-      showToast({
-        title: "Order submitted successfully!",
-        description: `Your order ID is ${orderData.orderId}`,
-      });
-      return;
-    }
-
-    // Regular validation for other print types
-    if (data.printType === 'custom' || (isBindingType && data.bindingColorType === 'custom')) {
-      if (!data.colorPages && !data.bwPages) {
         showToast({
-          title: "Page selection required",
-          description: "Please specify either color or black & white pages.",
+          title: "Order submitted successfully!",
+          description: `Your order ID is ${createdOrder.orderId}`,
+        });
+        return;
+      }
+
+      // Regular validation for other print types
+      if (data.printType === 'custom' || (isBindingType && data.bindingColorType === 'custom')) {
+        if (!data.colorPages && !data.bwPages) {
+          showToast({
+            title: "Page selection required",
+            description: "Please specify either color or black & white pages.",
+            variant: "destructive",
+          });
+          return;
+        }
+      } else if (!validatePageSelection(data.selectedPages || 'all', totalPages)) {
+        showToast({
+          title: "Invalid page selection",
+          description: "Please check your page selection.",
           variant: "destructive",
         });
         return;
       }
-    } else if (!validatePageSelection(data.selectedPages || 'all', totalPages)) {
+
+      const orderData = {
+        ...data,
+        files: uploadedFiles.map(file => ({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          path: file.path,
+        })),
+        totalCost: calculatedCost,
+      };
+
+      const createdOrder = await orderAPI.create(orderData);
+      setSubmittedOrderId(createdOrder.orderId);
+      setOrderSubmitted(true);
+
       showToast({
-        title: "Invalid page selection",
-        description: "Please check your page selection.",
+        title: "Order submitted successfully!",
+        description: `Your order ID is ${createdOrder.orderId}`,
+      });
+    } catch (error) {
+      console.error('Error submitting order:', error);
+      showToast({
+        title: "Error submitting order",
+        description: "Please try again later.",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const orderData = {
-      ...data,
-      files: files.map(file => ({
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        path: `/uploads/${file.name}`,
-      })),
-      orderId: `ORD-${Date.now()}`,
-      orderDate: new Date().toISOString(),
-      status: "pending",
-      totalCost: calculatedCost,
-    };
-
-    const existingOrders = JSON.parse(localStorage.getItem('xeroxOrders') || '[]');
-    localStorage.setItem('xeroxOrders', JSON.stringify([...existingOrders, orderData]));
-
-    setSubmittedOrderId(orderData.orderId);
-    setOrderSubmitted(true);
-
-    showToast({
-      title: "Order submitted successfully!",
-      description: `Your order ID is ${orderData.orderId}`,
-    });
   };
 
   const startNewOrder = () => {
     setOrderSubmitted(false);
     setSubmittedOrderId('');
     setFiles([]);
+    setUploadedFiles([]);
     setTotalPages(0);
     setCalculatedCost(0);
     setIsCustomPrint(false);
@@ -463,16 +430,12 @@ const OrderForm = () => {
   // Watch form values for cost calculation
   useEffect(() => {
     const subscription = form.watch((value) => {
-      if (totalPages > 0 && files.length > 0 && value.printType !== 'customPrint') {
-        console.log('Form values changed, recalculating cost');
+      if (totalPages > 0 && value.printType !== 'customPrint') {
         calculateCost(value as OrderFormValues);
-      } else if (totalPages === 0 || files.length === 0) {
-        console.log('No pages or files, setting cost to 0');
-        setCalculatedCost(0);
       }
     });
     return () => subscription.unsubscribe();
-  }, [form.watch, totalPages, files.length]);
+  }, [form.watch, totalPages]);
 
   // Watch print type for custom printing option and binding types
   useEffect(() => {
@@ -493,14 +456,6 @@ const OrderForm = () => {
         if (printType !== 'softBinding' && printType !== 'spiralBinding') {
           form.setValue('bindingColorType', 'blackAndWhite');
         }
-        
-        // Recalculate cost when print type changes
-        if (totalPages > 0 && files.length > 0) {
-          setTimeout(() => {
-            console.log('Print type changed, recalculating cost');
-            calculateCost(value as OrderFormValues);
-          }, 100);
-        }
       }
       
       if (name === 'bindingColorType') {
@@ -512,18 +467,10 @@ const OrderForm = () => {
           form.setValue('colorPages', '');
           form.setValue('bwPages', '');
         }
-        
-        // Recalculate cost when binding color type changes
-        if (totalPages > 0 && files.length > 0) {
-          setTimeout(() => {
-            console.log('Binding color type changed, recalculating cost');
-            calculateCost(value as OrderFormValues);
-          }, 100);
-        }
       }
     });
     return () => subscription.unsubscribe();
-  }, [form.watch, totalPages, files.length]);
+  }, [form.watch]);
 
   if (orderSubmitted) {
     return (
@@ -820,11 +767,7 @@ const OrderForm = () => {
                               field.onChange(e.target.value);
                               const newValues = form.getValues();
                               newValues.selectedPages = e.target.value;
-                              if (totalPages > 0 && files.length > 0) {
-                                setTimeout(() => {
-                                  calculateCost(newValues);
-                                }, 100);
-                              }
+                              calculateCost(newValues);
                             }}
                           />
                         </FormControl>
@@ -852,11 +795,7 @@ const OrderForm = () => {
                               disabled={totalPages === 0}
                               onChange={(e) => {
                                 field.onChange(e.target.value);
-                                if (totalPages > 0 && files.length > 0) {
-                                  setTimeout(() => {
-                                    calculateCost(form.getValues());
-                                  }, 100);
-                                }
+                                calculateCost(form.getValues());
                               }}
                             />
                           </FormControl>
@@ -881,11 +820,7 @@ const OrderForm = () => {
                               disabled={totalPages === 0}
                               onChange={(e) => {
                                 field.onChange(e.target.value);
-                                if (totalPages > 0 && files.length > 0) {
-                                  setTimeout(() => {
-                                    calculateCost(form.getValues());
-                                  }, 100);
-                                }
+                                calculateCost(form.getValues());
                               }}
                             />
                           </FormControl>
@@ -933,7 +868,7 @@ const OrderForm = () => {
                 <h4 className="text-sm font-medium text-gray-700 mb-3">Uploaded Files Preview</h4>
                 <div className="space-y-3">
                   {files.map((file, index) => (
-                    <div key={`${file.name}-${index}-${file.lastModified || Date.now()}`} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <div key={`${file.name}-${index}-${file.lastModified}`} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                       <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-xerox-600 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{file.name}</p>
@@ -1017,9 +952,9 @@ const OrderForm = () => {
             <Button 
               type="submit" 
               className="w-full md:w-auto bg-xerox-600 hover:bg-xerox-700"
-              disabled={files.length === 0}
+              disabled={files.length === 0 || isSubmitting}
             >
-              Submit Order
+              {isSubmitting ? 'Submitting...' : 'Submit Order'}
             </Button>
           </div>
         </form>
