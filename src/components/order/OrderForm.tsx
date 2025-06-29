@@ -121,6 +121,12 @@ const OrderForm = () => {
       return 0;
     }
 
+    // Don't calculate cost if no files are uploaded
+    if (totalPages === 0) {
+      setCalculatedCost(0);
+      return 0;
+    }
+
     const isDoubleSided = values.printSide === 'double';
     const copies = values.copies || 1;
     const printType = values.printType;
@@ -271,6 +277,7 @@ const OrderForm = () => {
   };
 
   const handleFilesChange = async (uploadedFilesList: File[]) => {
+    // Update local files state immediately for UI display
     setFiles(uploadedFilesList);
     
     if (uploadedFilesList.length > 0) {
@@ -280,6 +287,9 @@ const OrderForm = () => {
       } catch (error) {
         console.error('Error uploading files:', error);
         toast.error('Failed to upload files');
+        // Reset files state on upload error
+        setFiles([]);
+        setUploadedFiles([]);
       }
     } else {
       // Clear uploaded files when no files are selected
